@@ -1,0 +1,2 @@
+/Users/hassaneelmahi/Desktop/admin_coffee.finish-main/android/app/.cxx/RelWithDebInfo/1j6n4w2p/armeabi-v7a/CMakeFiles/edit_cache.dir
+/Users/hassaneelmahi/Desktop/admin_coffee.finish-main/android/app/.cxx/RelWithDebInfo/1j6n4w2p/armeabi-v7a/CMakeFiles/rebuild_cache.dir

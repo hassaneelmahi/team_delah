@@ -1,0 +1,2 @@
+/Users/hassaneelmahi/Desktop/admin_coffee.finish-main/android/app/.cxx/RelWithDebInfo/1j6n4w2p/x86_64/CMakeFiles/edit_cache.dir
+/Users/hassaneelmahi/Desktop/admin_coffee.finish-main/android/app/.cxx/RelWithDebInfo/1j6n4w2p/x86_64/CMakeFiles/rebuild_cache.dir
