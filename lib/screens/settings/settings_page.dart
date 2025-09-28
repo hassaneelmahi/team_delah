@@ -25,6 +25,8 @@ class _SettingsPageState extends State<SettingsPage> {
   String productFilter = '';
   // per-product toggling/loading state
   Map<String, bool> toggling = {};
+  // local overrides for availability when backend doesn't return per-shop flags
+  Map<String, bool> availabilityOverrides = {};
 
   final box = GetStorage();
 
@@ -40,6 +42,14 @@ class _SettingsPageState extends State<SettingsPage> {
     if (c is String) closingTime = _timeOfDayFromString(c);
     if (s is bool) is24Hours = s;
     if (n is bool) notificationsEnabled = n;
+
+    // load persisted availability overrides so UI keeps toggled state across refreshes
+    try {
+      final stored = box.read('availabilityOverrides');
+      if (stored is Map) {
+        availabilityOverrides = stored.map<String, bool>((k, v) => MapEntry(k.toString(), v == true));
+      }
+    } catch (_) {}
 
     // attempt to load products for this coffee shop
     final coffeeShopId = box.read('coffeeShopId');
@@ -130,18 +140,28 @@ class _SettingsPageState extends State<SettingsPage> {
   Future<void> _loadProducts(String coffeeShopId) async {
     setState(() => productsLoading = true);
     try {
-    final url = Uri.parse(
-      'https://delahcoffeebackend-production.up.railway.app/api/products/coffeeShop-products/$coffeeShopId?includeSoldOut=true');
-      final resp =
-          await http.get(url, headers: {'Content-Type': 'application/json'});
+      // Use categories_with_products which returns all products and exposes per-shop isAvailable
+      final url = Uri.parse('https://delahcoffeebackend-production.up.railway.app/api/products/categories_with_products?coffeeShopId=$coffeeShopId&includeSoldOut=true');
+      final resp = await http.get(url, headers: {'Content-Type': 'application/json'});
       if (resp.statusCode == 200) {
         final data = jsonDecode(resp.body);
-        // server returns a list of products
+        // server returns { categories: [ { products: [...] }, ... ] }
         List items = [];
-        if (data is List) {
-          items = data;
-        } else if (data is Map && data['products'] is List) {
-          items = data['products'];
+        try {
+          if (data is Map && data['categories'] is List) {
+            for (final c in data['categories']) {
+              if (c is Map && c['products'] is List) {
+                items.addAll(c['products']);
+              }
+            }
+          } else if (data is List) {
+            // fallback: if API returned a flat list
+            items = data;
+          } else if (data is Map && data['products'] is List) {
+            items = data['products'];
+          }
+        } catch (_) {
+          items = [];
         }
         final normalized = items.map<Map>((e) {
           if (e is Map) {
@@ -151,6 +171,31 @@ class _SettingsPageState extends State<SettingsPage> {
           }
           return (e as Map);
         }).toList();
+        // apply any local overrides so UI reflects recent toggles even if server doesn't
+        try {
+          for (var p in normalized) {
+            final id = (p['_id'] ?? p['id'] ?? p['productId'])?.toString();
+            if (id != null && availabilityOverrides.containsKey(id)) {
+              p['isAvailable'] = availabilityOverrides[id];
+            }
+          }
+        } catch (_) {}
+        // Debug: log what we received and which items are marked unavailable
+        try {
+          print('SettingsPage._loadProducts: coffeeShopId=$coffeeShopId fetched ${items.length} items');
+          final unavailable = normalized.where((e) => (e['isAvailable'] == false)).toList();
+          print('SettingsPage._loadProducts: unavailable count=${unavailable.length}');
+          if (unavailable.isNotEmpty) {
+            print('SettingsPage._loadProducts: unavailable ids=${unavailable.map((e) => e['_id'] ?? e['id'] ?? e['productId']).toList()}');
+          } else {
+            // when none are unavailable, print a truncated sample of the raw response to inspect server payload
+            try {
+              final raw = resp.body;
+              final t = raw.length > 1500 ? raw.substring(0, 1500) + '... (truncated)' : raw;
+              print('SettingsPage._loadProducts: raw response (truncated): $t');
+            } catch (_) {}
+          }
+        } catch (_) {}
         setState(() => products = normalized);
       } else {
         setState(() => products = []);
@@ -358,9 +403,11 @@ class _SettingsPageState extends State<SettingsPage> {
       };
 
       final resp = await http.patch(url, headers: headers, body: body);
-      if (resp.statusCode == 200) {
+        if (resp.statusCode == 200) {
         final data = jsonDecode(resp.body);
         final updated = data['product'] ?? data['data'] ?? data;
+          // Debug: log server response for toggle
+          try { print('SettingsPage._toggleSoldOut: server response: ${resp.body}'); } catch(_) {}
         // update local list
       // ensure updated has normalized isAvailable flag for UI
         try {
@@ -389,11 +436,18 @@ class _SettingsPageState extends State<SettingsPage> {
             return idp != null && prodId != null && idp.toString() == prodId.toString();
           });
           if (idx >= 0) products[idx] = updated;
+          // set a local override so UI shows the toggled availability immediately
+          try {
+            availabilityOverrides[prodKey] = newAvailable;
+            // persist overrides
+            try { box.write('availabilityOverrides', availabilityOverrides); } catch(_) {}
+          } catch (_) {}
         });
         Get.snackbar('Success', 'Product availability updated',
             snackPosition: SnackPosition.BOTTOM);
       } else {
         String msg = 'Failed to update product (${resp.statusCode})';
+        try { print('SettingsPage._toggleSoldOut: error response: ${resp.body}'); } catch(_) {}
         try {
           final parsed = jsonDecode(resp.body);
           // prefer explicit message fields if available
@@ -526,8 +580,26 @@ class _SettingsPageState extends State<SettingsPage> {
               ),
             ),
             const SizedBox(height: 12),
-            const Text('Products',
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text('Products',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                ElevatedButton.icon(
+                  onPressed: () {
+                    final coffeeShopId = box.read('coffeeShopId');
+                    if (coffeeShopId != null && coffeeShopId is String) {
+                      _loadProducts(coffeeShopId);
+                    } else {
+                      Get.snackbar('Error', 'No coffee shop selected', snackPosition: SnackPosition.BOTTOM);
+                    }
+                  },
+                  icon: const Icon(Icons.refresh, size: 16),
+                  label: const Text('Refresh products'),
+                  style: smallButton,
+                ),
+              ],
+            ),
             const SizedBox(height: 8),
             // search input for products
             TextField(
