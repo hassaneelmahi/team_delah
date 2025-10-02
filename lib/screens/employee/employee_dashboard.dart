@@ -101,8 +101,9 @@ class _EmployeeDashboardState extends State<EmployeeDashboard> {
       return;
     }
 
-    // On success, navigate to ReadyOrderPage and pass the updated order so it's shown immediately.
-    Get.to(() => ReadyOrderPage(initialOrder: updatedOrder));
+    // On success, show a confirmation and remain on the dashboard (don't navigate).
+    Get.snackbar('Success', 'Order marked as ready',
+        snackPosition: SnackPosition.BOTTOM);
   }
 
   void goToNextPage(int totalOrders) {
@@ -133,6 +134,32 @@ class _EmployeeDashboardState extends State<EmployeeDashboard> {
     super.dispose();
   }
 
+  Future<void> _reconnectWebSocket() async {
+    try {
+      // Close existing socket if open
+      try {
+        orderService.closeWebSocket();
+      } catch (_) {}
+
+      final coffeeShopId = GetStorage().read('coffeeShopId');
+      if (coffeeShopId == null || coffeeShopId is! String) {
+        Get.snackbar('Error', 'coffeeShopId missing, cannot reconnect');
+        return;
+      }
+
+      // Recreate service and stream
+      orderService = OrderService(coffeeShopId);
+      setState(() {
+        orderStream = orderService.getOrderStream();
+      });
+
+      Get.snackbar('Reconnected', 'WebSocket reconnected',
+          snackPosition: SnackPosition.BOTTOM);
+    } catch (e) {
+      Get.snackbar('Error', 'Failed to reconnect WebSocket');
+    }
+  }
+
   Future<void> _performLogout() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('isLoggedIn', false);
@@ -160,22 +187,45 @@ class _EmployeeDashboardState extends State<EmployeeDashboard> {
         actions: [
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8.0, vertical: 6.0),
-            child: ElevatedButton.icon(
-              onPressed: () {
-                Get.to(() => const ReadyOrderPage());
-              },
-              icon: const Icon(Icons.done_all_rounded,
-                  size: 20, color: Colors.white),
-              label: const Text('Ready Orders',
-                  style: TextStyle(color: Colors.white)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF007244),
-                elevation: 0,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20)),
-              ),
+            child: Row(
+              children: [
+                ElevatedButton.icon(
+                  onPressed: () {
+                    Get.to(() => const ReadyOrderPage());
+                  },
+                  icon: const Icon(Icons.done_all_rounded,
+                      size: 20, color: Colors.white),
+                  label: const Text('Ready Orders',
+                      style: TextStyle(color: Colors.white)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF007244),
+                    elevation: 0,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20)),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                // Reconnect button: closes and reopens websocket via OrderService
+                ElevatedButton.icon(
+                  onPressed: () async {
+                    await _reconnectWebSocket();
+                  },
+                  icon:
+                      const Icon(Icons.refresh, size: 20, color: Colors.white),
+                  label: const Text('Refresh WS',
+                      style: TextStyle(color: Colors.white)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF00512D),
+                    elevation: 0,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20)),
+                  ),
+                ),
+              ],
             ),
           ),
           // Popup menu for extra actions
@@ -641,7 +691,7 @@ class OrderItemWidget extends StatelessWidget {
   final String imagePath;
   final String name;
   final int quantity;
-  final List<dynamic> additives;
+  final dynamic additives;
 
   const OrderItemWidget({
     Key? key,
@@ -653,18 +703,91 @@ class OrderItemWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    List<String> extractValues(List<dynamic> additives) {
+    List<String> extractValues(dynamic rawAdditives) {
       List<String> values = [];
-      for (var additive in additives) {
-        if (additive is Map<String, dynamic> && additive.containsKey("value")) {
-          var value = additive["value"];
-          if (value is String && value.trim().isNotEmpty) {
-            values.add(value.trim());
-          } else if (value is Map<String, dynamic>) {
-            values.addAll(value.values.map((v) => v.toString().trim()));
+      if (rawAdditives == null) return values;
+
+      // Normalize to a list for easier processing
+      List<dynamic> list;
+      if (rawAdditives is List) {
+        list = rawAdditives;
+      } else if (rawAdditives is Map) {
+        list = [rawAdditives];
+      } else {
+        // unexpected shape (e.g., a single string)
+        if (rawAdditives is String && rawAdditives.trim().isNotEmpty) {
+          values.add(rawAdditives.trim());
+        }
+        return values;
+      }
+
+      for (var additive in list) {
+        if (additive == null) continue;
+        if (additive is String) {
+          if (additive.trim().isNotEmpty) values.add(additive.trim());
+          continue;
+        }
+
+        if (additive is Map) {
+          // Common shaped entry: { "name": "...", "value": ... }
+          if (additive.containsKey('value')) {
+            var v = additive['value'];
+            if (v == null) continue;
+            if (v is String) {
+              if (v.trim().isNotEmpty) values.add(v.trim());
+            } else if (v is Map) {
+              values.addAll(v.values.map((e) => e.toString().trim()));
+            } else if (v is List) {
+              values.addAll(v.map((e) => e.toString().trim()));
+            } else {
+              values.add(v.toString().trim());
+            }
+            continue;
           }
+
+          // Guest-order shaped map: may contain temperatures, selectedSize, selectedOptions, etc.
+          if (additive.containsKey('temperatures') &&
+              additive['temperatures'] != null) {
+            values.add(additive['temperatures'].toString().trim());
+          }
+          if (additive.containsKey('selectedSize') &&
+              additive['selectedSize'] != null) {
+            values.add(additive['selectedSize'].toString().trim());
+          }
+          if (additive.containsKey('selectedOptions') &&
+              additive['selectedOptions'] is Map) {
+            (additive['selectedOptions'] as Map).forEach((k, v) {
+              if (v != null) values.add(v.toString().trim());
+            });
+          }
+
+          // Fallback: collect any stringifiable map values
+          additive.values.forEach((v) {
+            if (v == null) return;
+            if (v is String && v.trim().isNotEmpty) {
+              if (!values.contains(v.trim())) values.add(v.trim());
+            } else if (v is Map) {
+              v.values.forEach((vv) {
+                if (vv != null && vv.toString().trim().isNotEmpty) {
+                  if (!values.contains(vv.toString().trim()))
+                    values.add(vv.toString().trim());
+                }
+              });
+            } else if (v is List) {
+              v.forEach((vv) {
+                if (vv != null && vv.toString().trim().isNotEmpty) {
+                  if (!values.contains(vv.toString().trim()))
+                    values.add(vv.toString().trim());
+                }
+              });
+            } else {
+              final s = v.toString().trim();
+              if (s.isNotEmpty && !values.contains(s)) values.add(s);
+            }
+          });
         }
       }
+
       return values;
     }
 

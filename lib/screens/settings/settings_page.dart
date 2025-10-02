@@ -47,7 +47,8 @@ class _SettingsPageState extends State<SettingsPage> {
     try {
       final stored = box.read('availabilityOverrides');
       if (stored is Map) {
-        availabilityOverrides = stored.map<String, bool>((k, v) => MapEntry(k.toString(), v == true));
+        availabilityOverrides = stored
+            .map<String, bool>((k, v) => MapEntry(k.toString(), v == true));
       }
     } catch (_) {}
 
@@ -141,8 +142,10 @@ class _SettingsPageState extends State<SettingsPage> {
     setState(() => productsLoading = true);
     try {
       // Use categories_with_products which returns all products and exposes per-shop isAvailable
-      final url = Uri.parse('https://delahcoffeebackend-production.up.railway.app/api/products/categories_with_products?coffeeShopId=$coffeeShopId&includeSoldOut=true');
-      final resp = await http.get(url, headers: {'Content-Type': 'application/json'});
+      final url = Uri.parse(
+          'https://delahcoffeebackend-production.up.railway.app/api/products/categories_with_products?coffeeShopId=$coffeeShopId&includeSoldOut=true');
+      final resp =
+          await http.get(url, headers: {'Content-Type': 'application/json'});
       if (resp.statusCode == 200) {
         final data = jsonDecode(resp.body);
         // server returns { categories: [ { products: [...] }, ... ] }
@@ -182,16 +185,22 @@ class _SettingsPageState extends State<SettingsPage> {
         } catch (_) {}
         // Debug: log what we received and which items are marked unavailable
         try {
-          print('SettingsPage._loadProducts: coffeeShopId=$coffeeShopId fetched ${items.length} items');
-          final unavailable = normalized.where((e) => (e['isAvailable'] == false)).toList();
-          print('SettingsPage._loadProducts: unavailable count=${unavailable.length}');
+          print(
+              'SettingsPage._loadProducts: coffeeShopId=$coffeeShopId fetched ${items.length} items');
+          final unavailable =
+              normalized.where((e) => (e['isAvailable'] == false)).toList();
+          print(
+              'SettingsPage._loadProducts: unavailable count=${unavailable.length}');
           if (unavailable.isNotEmpty) {
-            print('SettingsPage._loadProducts: unavailable ids=${unavailable.map((e) => e['_id'] ?? e['id'] ?? e['productId']).toList()}');
+            print(
+                'SettingsPage._loadProducts: unavailable ids=${unavailable.map((e) => e['_id'] ?? e['id'] ?? e['productId']).toList()}');
           } else {
             // when none are unavailable, print a truncated sample of the raw response to inspect server payload
             try {
               final raw = resp.body;
-              final t = raw.length > 1500 ? raw.substring(0, 1500) + '... (truncated)' : raw;
+              final t = raw.length > 1500
+                  ? raw.substring(0, 1500) + '... (truncated)'
+                  : raw;
               print('SettingsPage._loadProducts: raw response (truncated): $t');
             } catch (_) {}
           }
@@ -279,8 +288,8 @@ class _SettingsPageState extends State<SettingsPage> {
   Widget _availabilityButton({
     required bool isAvailable,
     required bool isToggling,
-  required VoidCallback onPressed,
-  bool compact = false,
+    required VoidCallback onPressed,
+    bool compact = false,
   }) {
     // professional styles
     final borderRadius = BorderRadius.circular(12.0);
@@ -317,7 +326,8 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
               ),
               if (!compact) const SizedBox(width: 10),
-              if (!compact) const Text('Updating…', style: TextStyle(color: Colors.white)),
+              if (!compact)
+                const Text('Updating…', style: TextStyle(color: Colors.white)),
             ],
           ),
         ),
@@ -325,9 +335,11 @@ class _SettingsPageState extends State<SettingsPage> {
     }
 
     // action button
-    final actionColor = isAvailable ? Colors.red.shade600 : Colors.green.shade600;
-  final icon = isAvailable ? Icons.remove_shopping_cart : Icons.check_circle_outline;
-  final label = isAvailable ? 'Sold out' : 'Make available';
+    final actionColor =
+        isAvailable ? Colors.red.shade600 : Colors.green.shade600;
+    final icon =
+        isAvailable ? Icons.remove_shopping_cart : Icons.check_circle_outline;
+    final label = isAvailable ? 'Sold out' : 'Make available';
 
     return Material(
       elevation: 4,
@@ -338,7 +350,9 @@ class _SettingsPageState extends State<SettingsPage> {
         borderRadius: borderRadius,
         child: Ink(
           height: buttonHeight,
-          padding: compact ? const EdgeInsets.symmetric(horizontal: 8) : const EdgeInsets.symmetric(horizontal: 12),
+          padding: compact
+              ? const EdgeInsets.symmetric(horizontal: 8)
+              : const EdgeInsets.symmetric(horizontal: 12),
           decoration: BoxDecoration(
             color: actionColor,
             borderRadius: borderRadius,
@@ -403,13 +417,15 @@ class _SettingsPageState extends State<SettingsPage> {
       };
 
       final resp = await http.patch(url, headers: headers, body: body);
-        if (resp.statusCode == 200) {
+      if (resp.statusCode == 200) {
         final data = jsonDecode(resp.body);
         final updated = data['product'] ?? data['data'] ?? data;
-          // Debug: log server response for toggle
-          try { print('SettingsPage._toggleSoldOut: server response: ${resp.body}'); } catch(_) {}
+        // Debug: log server response for toggle
+        try {
+          print('SettingsPage._toggleSoldOut: server response: ${resp.body}');
+        } catch (_) {}
         // update local list
-      // ensure updated has normalized isAvailable flag for UI
+        // ensure updated has normalized isAvailable flag for UI
         try {
           if (updated is Map) {
             // normalize existing server value
@@ -425,7 +441,10 @@ class _SettingsPageState extends State<SettingsPage> {
                 av[shopId] = newAvailable;
                 av[shopId.toString()] = newAvailable;
               } else {
-                updated['availability'] = {shopId: newAvailable, shopId.toString(): newAvailable};
+                updated['availability'] = {
+                  shopId: newAvailable,
+                  shopId.toString(): newAvailable
+                };
               }
             } catch (_) {}
           }
@@ -433,21 +452,27 @@ class _SettingsPageState extends State<SettingsPage> {
         setState(() {
           final idx = products.indexWhere((p) {
             final idp = p['_id'] ?? p['id'] ?? p['productId'];
-            return idp != null && prodId != null && idp.toString() == prodId.toString();
+            return idp != null &&
+                prodId != null &&
+                idp.toString() == prodId.toString();
           });
           if (idx >= 0) products[idx] = updated;
           // set a local override so UI shows the toggled availability immediately
           try {
             availabilityOverrides[prodKey] = newAvailable;
             // persist overrides
-            try { box.write('availabilityOverrides', availabilityOverrides); } catch(_) {}
+            try {
+              box.write('availabilityOverrides', availabilityOverrides);
+            } catch (_) {}
           } catch (_) {}
         });
         Get.snackbar('Success', 'Product availability updated',
             snackPosition: SnackPosition.BOTTOM);
       } else {
         String msg = 'Failed to update product (${resp.statusCode})';
-        try { print('SettingsPage._toggleSoldOut: error response: ${resp.body}'); } catch(_) {}
+        try {
+          print('SettingsPage._toggleSoldOut: error response: ${resp.body}');
+        } catch (_) {}
         try {
           final parsed = jsonDecode(resp.body);
           // prefer explicit message fields if available
@@ -584,14 +609,16 @@ class _SettingsPageState extends State<SettingsPage> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 const Text('Products',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                    style:
+                        TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 ElevatedButton.icon(
                   onPressed: () {
                     final coffeeShopId = box.read('coffeeShopId');
                     if (coffeeShopId != null && coffeeShopId is String) {
                       _loadProducts(coffeeShopId);
                     } else {
-                      Get.snackbar('Error', 'No coffee shop selected', snackPosition: SnackPosition.BOTTOM);
+                      Get.snackbar('Error', 'No coffee shop selected',
+                          snackPosition: SnackPosition.BOTTOM);
                     }
                   },
                   icon: const Icon(Icons.refresh, size: 16),
@@ -621,7 +648,8 @@ class _SettingsPageState extends State<SettingsPage> {
                 ),
                 contentPadding: const EdgeInsets.symmetric(vertical: 12),
               ),
-              onChanged: (v) => setState(() => productFilter = v.trim().toLowerCase()),
+              onChanged: (v) =>
+                  setState(() => productFilter = v.trim().toLowerCase()),
             ),
             const SizedBox(height: 8),
             productsLoading
@@ -632,14 +660,18 @@ class _SettingsPageState extends State<SettingsPage> {
                         child: Text('No products found for this coffee shop.'),
                       )
                     : Column(
-                        children: products
-                            .where((p) {
-                              if (productFilter.isEmpty) return true;
-                              final name = (p['name'] ?? p['title'] ?? '').toString().toLowerCase();
-                              final id = (p['_id'] ?? p['id'] ?? p['productId'] ?? '').toString().toLowerCase();
-                              return name.contains(productFilter) || id.contains(productFilter);
-                            })
-                            .map<Widget>((p) {
+                        children: products.where((p) {
+                          if (productFilter.isEmpty) return true;
+                          final name = (p['name'] ?? p['title'] ?? '')
+                              .toString()
+                              .toLowerCase();
+                          final id =
+                              (p['_id'] ?? p['id'] ?? p['productId'] ?? '')
+                                  .toString()
+                                  .toLowerCase();
+                          return name.contains(productFilter) ||
+                              id.contains(productFilter);
+                        }).map<Widget>((p) {
                           final id = p['_id'] ?? p['id'] ?? p['productId'];
                           final name = p['name'] ?? p['title'] ?? 'Unnamed';
                           final img = _getProductImage(p['images']);
@@ -667,7 +699,8 @@ class _SettingsPageState extends State<SettingsPage> {
                                 final useCompact = constraints.maxWidth < 120;
                                 return _availabilityButton(
                                   isAvailable: isAvailable,
-                                  isToggling: toggling[(id ?? '').toString()] == true,
+                                  isToggling:
+                                      toggling[(id ?? '').toString()] == true,
                                   compact: useCompact,
                                   onPressed: () => _toggleSoldOut(p),
                                 );

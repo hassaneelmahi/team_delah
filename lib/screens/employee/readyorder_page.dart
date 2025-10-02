@@ -20,6 +20,7 @@ class _ReadyOrderPageState extends State<ReadyOrderPage> {
   List<dynamic> readyOrders = [];
   bool isLoading = true;
   String? coffeeShopId;
+  String _searchQuery = '';
 
   @override
   void initState() {
@@ -138,33 +139,84 @@ class _ReadyOrderPageState extends State<ReadyOrderPage> {
       ),
       body: isLoading
           ? const Center(child: CircularProgressIndicator())
-          : readyOrders.isEmpty
-              ? const Center(child: Text("No Ready Orders Found"))
-              : Padding(
-                  padding: const EdgeInsets.all(10.0),
-                  child: GridView.builder(
-                    itemCount: readyOrders.length,
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 4,
-                      crossAxisSpacing: 10,
-                      mainAxisSpacing: 10,
-                      childAspectRatio: 0.75,
+          : Padding(
+              padding: const EdgeInsets.all(10.0),
+              child: Column(
+                children: [
+                  // Search field to filter by the trailing characters of order ID
+                  TextField(
+                    decoration: InputDecoration(
+                      labelText: 'Search by last characters of order ID',
+                      prefixIcon: const Icon(Icons.search),
+                      suffixIcon: _searchQuery.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear),
+                              onPressed: () {
+                                setState(() {
+                                  _searchQuery = '';
+                                });
+                              },
+                            )
+                          : null,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(8.0),
+                      ),
                     ),
-                    itemBuilder: (context, index) {
-                      var order = readyOrders[index];
-                      return OrderCardFixedHeight(
-                        key: ValueKey(order['_id']),
-                        orderId: order['_id'],
-                        date: order['createdAt'],
-                        clientName: "Client ${index + 1}",
-                        items: order['orderItems'],
-                        onAction: () => markOrderAsDelivered(order['_id']),
-                        buttonText: "Delivered",
-                      );
+                    onChanged: (v) {
+                      setState(() {
+                        _searchQuery = v.trim();
+                      });
                     },
                   ),
-                ),
+                  const SizedBox(height: 10),
+                  // Show helpful empty state when there are no ready orders at all
+                  if (readyOrders.isEmpty)
+                    const Expanded(
+                        child: Center(child: Text("No Ready Orders Found")))
+                  else
+                    // Filtered grid
+                    Expanded(
+                      child: Builder(builder: (context) {
+                        final List<dynamic> filtered = _searchQuery.isEmpty
+                            ? readyOrders
+                            : readyOrders.where((order) {
+                                final id = order['_id']?.toString() ?? '';
+                                return id.endsWith(_searchQuery);
+                              }).toList();
+
+                        if (filtered.isEmpty) {
+                          return const Center(
+                              child: Text('No matching orders'));
+                        }
+
+                        return GridView.builder(
+                          itemCount: filtered.length,
+                          gridDelegate:
+                              const SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: 4,
+                            crossAxisSpacing: 10,
+                            mainAxisSpacing: 10,
+                            childAspectRatio: 0.75,
+                          ),
+                          itemBuilder: (context, index) {
+                            var order = filtered[index];
+                            return OrderCardFixedHeight(
+                              key: ValueKey(order['_id']),
+                              orderId: order['_id'],
+                              date: order['createdAt'],
+                              clientName: "Client ${index + 1}",
+                              items: order['orderItems'],
+                              onAction: () =>
+                                  markOrderAsDelivered(order['_id']),
+                              buttonText: "Delivered",
+                            );
+                          },
+                        );
+                      }),
+                    ),
+                ],
+              ),
+            ),
     );
   }
 }
